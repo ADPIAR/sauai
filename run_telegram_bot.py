@@ -31,7 +31,7 @@ def check_requirements():
     try:
         import telegram
         import dotenv
-        import pinecone
+        from pinecone import Pinecone
         import openai
         import langchain
         import psycopg2
