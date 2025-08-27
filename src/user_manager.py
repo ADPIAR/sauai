@@ -1,0 +1,193 @@
+#!/usr/bin/env python3
+"""
+Gestor de usuarios para el bot de Telegram
+"""
+
+import datetime
+from typing import Dict, Optional, List
+from dataclasses import dataclass, asdict, field
+from database_manager import DatabaseManager # Importa DatabaseManager
+
+@dataclass
+class UserInfo:
+    """Información de un usuario del bot"""
+    user_id: int
+    first_name: str
+    last_name: Optional[str] = None
+    username: Optional[str] = None
+    language_code: Optional[str] = None
+    is_premium: bool = False
+    first_seen: datetime.datetime = field(default_factory=datetime.datetime.now)
+    last_seen: datetime.datetime = field(default_factory=datetime.datetime.now)
+    message_count: int = 0
+    favorite_topics: List[str] = field(default_factory=list)
+    personal_name: Optional[str] = None # Nuevo campo
+    age: Optional[int] = None # Nuevo campo
+    user_needs: Optional[str] = None # Nuevo campo
+
+    def to_dict(self):
+        # Convierte el objeto UserInfo a un diccionario, incluyendo el formato de fecha ISO
+        data = asdict(self)
+        data['first_seen'] = self.first_seen.isoformat()
+        data['last_seen'] = self.last_seen.isoformat()
+        return data
+
+class UserManager:
+    """Gestiona información de usuarios del bot usando PostgreSQL"""
+
+    def __init__(self, db_manager: DatabaseManager):
+        self.db_manager = db_manager
+
+    def get_user(self, user_id: int) -> Optional[UserInfo]:
+        """Obtiene un usuario de la base de datos por su ID."""
+        try:
+            self.db_manager.cursor.execute(
+                "SELECT user_id, first_name, last_name, username, language_code, is_premium, first_seen, last_seen, message_count, favorite_topics, personal_name, age, user_needs FROM users WHERE user_id = %s;",
+                (user_id,)
+            )
+            row = self.db_manager.cursor.fetchone()
+            if row:
+                return UserInfo(
+                    user_id=row[0],
+                    first_name=row[1],
+                    last_name=row[2],
+                    username=row[3],
+                    language_code=row[4],
+                    is_premium=row[5],
+                    first_seen=row[6],
+                    last_seen=row[7],
+                    message_count=row[8],
+                    favorite_topics=row[9] if row[9] else [], # Asegura que sea una lista si es None
+                    personal_name=row[10],
+                    age=row[11],
+                    user_needs=row[12]
+                )
+            return None
+        except Exception as e:
+            print(f"Error al obtener usuario {user_id}: {e}")
+            return None
+
+    def create_or_update_user(self, user_data) -> UserInfo:
+        """Crea o actualiza un usuario en la base de datos."""
+        user_id = user_data.id
+        now = datetime.datetime.now()
+
+        existing_user = self.get_user(user_id)
+
+        if existing_user:
+            # Actualizar usuario existente
+            sql = """
+                UPDATE users
+                SET first_name = %s, last_name = %s, username = %s,
+                    language_code = %s, is_premium = %s, last_seen = %s,
+                    message_count = message_count + 1
+                WHERE user_id = %s
+                RETURNING *;
+            """
+            params = (
+                user_data.first_name, user_data.last_name, user_data.username,
+                user_data.language_code, getattr(user_data, 'is_premium', False),
+                now, user_id
+            )
+        else:
+            # Nuevo usuario
+            sql = """
+                INSERT INTO users (user_id, first_name, last_name, username,
+                                   language_code, is_premium, first_seen,
+                                   last_seen, message_count)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING *;
+            """
+            params = (
+                user_id, user_data.first_name, user_data.last_name,
+                user_data.username, user_data.language_code,
+                getattr(user_data, 'is_premium', False), now, now, 1
+            )
+
+        try:
+            self.db_manager.cursor.execute(sql, params)
+            self.db_manager.conn.commit()
+            updated_user_row = self.db_manager.cursor.fetchone()
+            if updated_user_row:
+                return UserInfo(
+                    user_id=updated_user_row[0],
+                    first_name=updated_user_row[1],
+                    last_name=updated_user_row[2],
+                    username=updated_user_row[3],
+                    language_code=updated_user_row[4],
+                    is_premium=updated_user_row[5],
+                    first_seen=updated_user_row[6],
+                    last_seen=updated_user_row[7],
+                    message_count=updated_user_row[8],
+                    favorite_topics=updated_user_row[9] if updated_user_row[9] else [],
+                    personal_name=updated_user_row[10],
+                    age=updated_user_row[11],
+                    user_needs=updated_user_row[12]
+                )
+            raise Exception("No se pudo recuperar el usuario después de la inserción/actualización.")
+        except Exception as e:
+            self.db_manager.conn.rollback()
+            print(f"Error al registrar/actualizar usuario {user_id}: {e}")
+            raise
+
+    def increment_message_count(self, user_id: int):
+        """Incrementa el contador de mensajes de un usuario."""
+        try:
+            self.db_manager.cursor.execute(
+                "UPDATE users SET message_count = message_count + 1, last_seen = %s WHERE user_id = %s;",
+                (datetime.datetime.now(), user_id)
+            )
+            self.db_manager.conn.commit()
+        except Exception as e:
+            self.db_manager.conn.rollback()
+            print(f"Error al incrementar contador de mensajes para el usuario {user_id}: {e}")
+            raise
+
+    def track_topic_interest(self, user_id: int, topic: str):
+        """Registra interés en un tema específico para un usuario."""
+        try:
+            # Añade el tema al array si no existe
+            self.db_manager.cursor.execute(
+                "UPDATE users SET favorite_topics = array_append(favorite_topics, %s) WHERE user_id = %s AND NOT (%s = ANY(favorite_topics));",
+                (topic, user_id, topic)
+            )
+            self.db_manager.conn.commit()
+        except Exception as e:
+            self.db_manager.conn.rollback()
+            print(f"Error al registrar interés en el tema '{topic}' para el usuario {user_id}: {e}")
+            raise
+
+    def get_user_stats(self) -> Dict:
+        """Obtiene estadísticas generales de los usuarios."""
+        try:
+            self.db_manager.cursor.execute("SELECT COUNT(*) FROM users;")
+            total_users = self.db_manager.cursor.fetchone()[0]
+
+            today = datetime.datetime.now().date()
+            self.db_manager.cursor.execute(
+                "SELECT COUNT(*) FROM users WHERE last_seen::date = %s;",
+                (today,)
+            )
+            active_today = self.db_manager.cursor.fetchone()[0]
+
+            self.db_manager.cursor.execute(
+                "SELECT first_name, message_count FROM users ORDER BY message_count DESC LIMIT 10;"
+            )
+            top_users_rows = self.db_manager.cursor.fetchall()
+            top_users = [{"first_name": row[0], "message_count": row[1]} for row in top_users_rows]
+
+            self.db_manager.cursor.execute(
+                "SELECT language_code, COUNT(*) FROM users WHERE language_code IS NOT NULL GROUP BY language_code;"
+            )
+            languages_rows = self.db_manager.cursor.fetchall()
+            languages = {row[0]: row[1] for row in languages_rows}
+
+            return {
+                "total_users": total_users,
+                "active_today": active_today,
+                "top_users": top_users,
+                "languages": languages
+            }
+        except Exception as e:
+            print(f"Error al obtener estadísticas de usuarios: {e}")
+            return {}
