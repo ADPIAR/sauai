@@ -14,7 +14,7 @@ SAÚ es un chatbot inteligente especializado en vida saludable que funciona a tr
 
 ### Requisitos Previos
 - Python 3.8+
-- Cuenta de OpenAI con API key
+- Cuenta de Google AI con API key (Gemini)
 - Cuenta de Pinecone con API key
 - Bot de Telegram creado con @BotFather
 
@@ -32,9 +32,10 @@ pip install -r requirements.txt
 ### 3. Configurar Variables de Entorno
 Crear archivo `.env` con:
 ```env
-OPENAI_API_KEY=tu_openai_api_key
+GOOGLE_API_KEY=tu_google_api_key
 PINECONE_API_KEY=tu_pinecone_api_key
 TELEGRAM_BOT_TOKEN=tu_telegram_bot_token
+DATABASE_URL=tu_postgresql_url
 ```
 
 ### 4. Preparar Base de Conocimientos
@@ -86,7 +87,7 @@ SAÚ: "¡Perfecto! Para darte una rutina personalizada, ¿me puedes contar cuán
 ### Integración RAG
 - **Vector Store**: Pinecone para almacenamiento de embeddings
 - **Retrieval**: Búsqueda semántica de información relevante
-- **Generation**: Respuestas contextualizadas con OpenAI GPT-4
+- **Generation**: Respuestas contextualizadas con Google Gemini 1.5 Pro
 
 ## 🚀 Características Avanzadas
 

@@ -32,7 +32,7 @@ def check_requirements():
         import telegram
         import dotenv
         from pinecone import Pinecone
-        import openai
+        import google.generativeai
         import langchain
         import psycopg2
         return True
@@ -46,7 +46,7 @@ def check_environment():
     from dotenv import load_dotenv
     load_dotenv()
     
-    required_vars = ['OPENAI_API_KEY', 'PINECONE_API_KEY', 'TELEGRAM_BOT_TOKEN', 'DATABASE_URL'] # Añadir DATABASE_URL
+    required_vars = ['GOOGLE_API_KEY', 'PINECONE_API_KEY', 'TELEGRAM_BOT_TOKEN', 'DATABASE_URL']
     missing_vars = []
     
     for var in required_vars:

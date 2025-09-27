@@ -89,8 +89,11 @@ class TelegramSauAI:
             # Registrar o actualizar usuario en la base de datos
             user_info = self.user_manager.create_or_update_user(update.message.from_user)
             
+            # Obtener username para la sesión
+            username = update.message.from_user.username or f"user_{user_id}"
+            
             # Obtener o crear sesión del usuario
-            user_session = self.session_manager.get_or_create_session(user_id) # Ahora solo necesita user_id
+            user_session = self.session_manager.get_or_create_session(username)
             
             # Guardar mensaje del usuario en historial usando session_id
             self.session_manager.add_message_to_history(user_session.session_id, user_message, is_user=True)
@@ -106,7 +109,7 @@ class TelegramSauAI:
                     loop.run_in_executor(
                         self.executor,
                         self._process_with_sauai,
-                        user_id, # Pasar user_id
+                        username, # Pasar username
                         user_session.session_id, # Pasar session_id
                         user_message
                     ),
@@ -131,11 +134,11 @@ class TelegramSauAI:
                     "❌ Lo siento, ocurrió un error al procesar tu pregunta. Por favor, intenta nuevamente."
                 )
     
-    def _process_with_sauai(self, user_id: int, session_id: uuid.UUID, user_message: str) -> str:
+    def _process_with_sauai(self, username: str, session_id: uuid.UUID, user_message: str) -> str:
         """Procesa un mensaje con SauAI - SIMPLIFICADO"""
         try:
             # Obtener información básica del usuario para contexto desde UserManager
-            user_info = self.user_manager.get_user(user_id)
+            user_info = self.user_manager.get_user(username)
             
             # Crear contexto mínimo y natural
             context_parts = []
@@ -164,7 +167,7 @@ class TelegramSauAI:
             return response
             
         except Exception as e:
-            logger.error(f"❌ Error procesando con SauAI para usuario {user_id}: {e}")
+            logger.error(f"❌ Error procesando con SauAI para usuario {username}: {e}")
             return "❌ Lo siento, ocurrió un error al procesar tu pregunta. Por favor, intenta nuevamente."
     
     async def _send_response(self, update: Update, response: str):

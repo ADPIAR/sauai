@@ -19,13 +19,13 @@ logger = logging.getLogger(__name__)
 class UserSession:
     """Información básica de sesión de un usuario"""
     session_id: uuid.UUID # Ahora es un UUID, no string
-    user_id: int
+    username: str  # Username como identificador principal
     created_at: datetime.datetime = field(default_factory=datetime.datetime.now)
     last_activity: datetime.datetime = field(default_factory=datetime.datetime.now)
     user_preferences: Dict = field(default_factory=dict)
     
-    # Nota: first_name, last_name, username, personal_name, age, user_needs
-    # ahora se gestionan en UserManager y UserInfo. Aquí solo el ID de usuario.
+    # Nota: first_name, last_name, personal_name, age, user_needs
+    # ahora se gestionan en UserManager y UserInfo. Aquí solo el username.
 
 class SessionManager:
     """Gestiona sesiones y memoria por usuario usando PostgreSQL"""
@@ -37,14 +37,14 @@ class SessionManager:
         # No es necesario cargar sesiones aquí, se obtienen/crean on-demand
         logger.info("✅ SessionManager inicializado")
     
-    def get_or_create_session(self, user_id: int) -> UserSession:
+    def get_or_create_session(self, username: str) -> UserSession:
         """Obtiene sesión existente o crea una nueva para el usuario."""
         with self._lock:
             try:
                 # Intentar obtener la sesión más reciente del usuario
                 self.db_manager.cursor.execute(
-                    "SELECT session_id, user_id, created_at, last_activity, user_preferences FROM sessions WHERE user_id = %s ORDER BY last_activity DESC LIMIT 1;",
-                    (user_id,)
+                    "SELECT session_id, username, created_at, last_activity, user_preferences FROM sessions WHERE username = %s ORDER BY last_activity DESC LIMIT 1;",
+                    (username,)
                 )
                 row = self.db_manager.cursor.fetchone()
                 
@@ -52,7 +52,7 @@ class SessionManager:
                     # Sesión existente, actualizar last_activity
                     session = UserSession(
                         session_id=row[0],
-                        user_id=row[1],
+                        username=row[1],
                         created_at=row[2],
                         last_activity=row[3],
                         user_preferences=row[4] if row[4] else {}
@@ -62,32 +62,32 @@ class SessionManager:
                         (datetime.datetime.now(), session.session_id)
                     )
                     self.db_manager.conn.commit()
-                    logger.info(f"👤 Actualizando sesión existente {session.session_id} para usuario {user_id}")
+                    logger.info(f"👤 Actualizando sesión existente {session.session_id} para usuario {username}")
                     return session
                 else:
                     # Crear nueva sesión
                     new_session_id = uuid.uuid4() # Generar UUID en Python para la inserción
                     self.db_manager.cursor.execute(
-                        "INSERT INTO sessions (session_id, user_id, created_at, last_activity) VALUES (%s, %s, %s, %s) RETURNING session_id, user_id, created_at, last_activity, user_preferences;",
-                        (str(new_session_id), user_id, datetime.datetime.now(), datetime.datetime.now())
+                        "INSERT INTO sessions (session_id, username, created_at, last_activity) VALUES (%s, %s, %s, %s) RETURNING session_id, username, created_at, last_activity, user_preferences;",
+                        (str(new_session_id), username, datetime.datetime.now(), datetime.datetime.now())
                     )
                     self.db_manager.conn.commit()
                     new_session_row = self.db_manager.cursor.fetchone()
                     if new_session_row:
                         session = UserSession(
                             session_id=new_session_row[0],
-                            user_id=new_session_row[1],
+                            username=new_session_row[1],
                             created_at=new_session_row[2],
                             last_activity=new_session_row[3],
                             user_preferences=new_session_row[4] if new_session_row[4] else {}
                         )
-                        logger.info(f"🆕 Creando nueva sesión {session.session_id} para usuario {user_id}")
+                        logger.info(f"🆕 Creando nueva sesión {session.session_id} para usuario {username}")
                         return session
                     else:
                         raise Exception("No se pudo crear la sesión o recuperar sus datos.")
             except Exception as e:
                 self.db_manager.conn.rollback()
-                logger.error(f"❌ Error en get_or_create_session para usuario {user_id}: {e}")
+                logger.error(f"❌ Error en get_or_create_session para usuario {username}: {e}")
                 raise
 
     def add_message_to_history(self, session_id: uuid.UUID, message: str, is_user: bool = True):
