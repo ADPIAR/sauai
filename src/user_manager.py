@@ -41,28 +41,29 @@ class UserManager:
     def get_user(self, username: str) -> Optional[UserInfo]:
         """Obtiene un usuario de la base de datos por su username."""
         try:
-            self.db_manager.cursor.execute(
-                "SELECT username, telegram_user_id, first_name, last_name, language_code, is_premium, first_seen, last_seen, message_count, favorite_topics, personal_name, age, user_needs FROM users_telegram WHERE username = %s;",
-                (username,)
-            )
-            row = self.db_manager.cursor.fetchone()
-            if row:
-                return UserInfo(
-                    username=row[0],
-                    telegram_user_id=row[1],
-                    first_name=row[2],
-                    last_name=row[3],
-                    language_code=row[4],
-                    is_premium=row[5],
-                    first_seen=row[6],
-                    last_seen=row[7],
-                    message_count=row[8],
-                    favorite_topics=row[9] if row[9] else [],
-                    personal_name=row[10],
-                    age=row[11],
-                    user_needs=row[12]
+            with self.db_manager.get_connection() as (conn, cursor):
+                cursor.execute(
+                    "SELECT username, telegram_user_id, first_name, last_name, language_code, is_premium, first_seen, last_seen, message_count, favorite_topics, personal_name, age, user_needs FROM users_telegram WHERE username = %s;",
+                    (username,)
                 )
-            return None
+                row = cursor.fetchone()
+                if row:
+                    return UserInfo(
+                        username=row[0],
+                        telegram_user_id=row[1],
+                        first_name=row[2],
+                        last_name=row[3],
+                        language_code=row[4],
+                        is_premium=row[5],
+                        first_seen=row[6],
+                        last_seen=row[7],
+                        message_count=row[8],
+                        favorite_topics=row[9] if row[9] else [],
+                        personal_name=row[10],
+                        age=row[11],
+                        user_needs=row[12]
+                    )
+                return None
         except Exception as e:
             print(f"Error al obtener usuario {username}: {e}")
             return None
@@ -106,89 +107,90 @@ class UserManager:
             )
 
         try:
-            self.db_manager.cursor.execute(sql, params)
-            self.db_manager.conn.commit()
-            updated_user_row = self.db_manager.cursor.fetchone()
-            if updated_user_row:
-                return UserInfo(
-                    username=updated_user_row[0],
-                    telegram_user_id=updated_user_row[1],
-                    first_name=updated_user_row[2],
-                    last_name=updated_user_row[3],
-                    language_code=updated_user_row[4],
-                    is_premium=updated_user_row[5],
-                    first_seen=updated_user_row[6],
-                    last_seen=updated_user_row[7],
-                    message_count=updated_user_row[8],
-                    favorite_topics=updated_user_row[9] if updated_user_row[9] else [],
-                    personal_name=updated_user_row[10],
-                    age=updated_user_row[11],
-                    user_needs=updated_user_row[12]
-                )
-            raise Exception("No se pudo recuperar el usuario después de la inserción/actualización.")
+            with self.db_manager.get_connection() as (conn, cursor):
+                cursor.execute(sql, params)
+                conn.commit()
+                updated_user_row = cursor.fetchone()
+                if updated_user_row:
+                    return UserInfo(
+                        username=updated_user_row[0],
+                        telegram_user_id=updated_user_row[1],
+                        first_name=updated_user_row[2],
+                        last_name=updated_user_row[3],
+                        language_code=updated_user_row[4],
+                        is_premium=updated_user_row[5],
+                        first_seen=updated_user_row[6],
+                        last_seen=updated_user_row[7],
+                        message_count=updated_user_row[8],
+                        favorite_topics=updated_user_row[9] if updated_user_row[9] else [],
+                        personal_name=updated_user_row[10],
+                        age=updated_user_row[11],
+                        user_needs=updated_user_row[12]
+                    )
+                raise Exception("No se pudo recuperar el usuario después de la inserción/actualización.")
         except Exception as e:
-            self.db_manager.conn.rollback()
             print(f"Error al registrar/actualizar usuario {username}: {e}")
             raise
 
     def increment_message_count(self, username: str):
         """Incrementa el contador de mensajes de un usuario."""
         try:
-            self.db_manager.cursor.execute(
-                "UPDATE users_telegram SET message_count = message_count + 1, last_seen = %s WHERE username = %s;",
-                (datetime.datetime.now(), username)
-            )
-            self.db_manager.conn.commit()
+            with self.db_manager.get_connection() as (conn, cursor):
+                cursor.execute(
+                    "UPDATE users_telegram SET message_count = message_count + 1, last_seen = %s WHERE username = %s;",
+                    (datetime.datetime.now(), username)
+                )
+                conn.commit()
         except Exception as e:
-            self.db_manager.conn.rollback()
             print(f"Error al incrementar contador de mensajes para el usuario {username}: {e}")
             raise
 
     def track_topic_interest(self, username: str, topic: str):
         """Registra interés en un tema específico para un usuario."""
         try:
-            # Añade el tema al array si no existe
-            self.db_manager.cursor.execute(
-                "UPDATE users_telegram SET favorite_topics = array_append(favorite_topics, %s) WHERE username = %s AND NOT (%s = ANY(favorite_topics));",
-                (topic, username, topic)
-            )
-            self.db_manager.conn.commit()
+            with self.db_manager.get_connection() as (conn, cursor):
+                # Añade el tema al array si no existe
+                cursor.execute(
+                    "UPDATE users_telegram SET favorite_topics = array_append(favorite_topics, %s) WHERE username = %s AND NOT (%s = ANY(favorite_topics));",
+                    (topic, username, topic)
+                )
+                conn.commit()
         except Exception as e:
-            self.db_manager.conn.rollback()
             print(f"Error al registrar interés en el tema '{topic}' para el usuario {username}: {e}")
             raise
 
     def get_user_stats(self) -> Dict:
         """Obtiene estadísticas generales de los usuarios."""
         try:
-            self.db_manager.cursor.execute("SELECT COUNT(*) FROM users_telegram;")
-            total_users = self.db_manager.cursor.fetchone()[0]
+            with self.db_manager.get_connection() as (conn, cursor):
+                cursor.execute("SELECT COUNT(*) FROM users_telegram;")
+                total_users = cursor.fetchone()[0]
 
-            today = datetime.datetime.now().date()
-            self.db_manager.cursor.execute(
-                "SELECT COUNT(*) FROM users_telegram WHERE last_seen::date = %s;",
-                (today,)
-            )
-            active_today = self.db_manager.cursor.fetchone()[0]
+                today = datetime.datetime.now().date()
+                cursor.execute(
+                    "SELECT COUNT(*) FROM users_telegram WHERE last_seen::date = %s;",
+                    (today,)
+                )
+                active_today = cursor.fetchone()[0]
 
-            self.db_manager.cursor.execute(
-                "SELECT first_name, message_count FROM users_telegram ORDER BY message_count DESC LIMIT 10;"
-            )
-            top_users_rows = self.db_manager.cursor.fetchall()
-            top_users = [{"first_name": row[0], "message_count": row[1]} for row in top_users_rows]
+                cursor.execute(
+                    "SELECT first_name, message_count FROM users_telegram ORDER BY message_count DESC LIMIT 10;"
+                )
+                top_users_rows = cursor.fetchall()
+                top_users = [{"first_name": row[0], "message_count": row[1]} for row in top_users_rows]
 
-            self.db_manager.cursor.execute(
-                "SELECT language_code, COUNT(*) FROM users_telegram WHERE language_code IS NOT NULL GROUP BY language_code;"
-            )
-            languages_rows = self.db_manager.cursor.fetchall()
-            languages = {row[0]: row[1] for row in languages_rows}
+                cursor.execute(
+                    "SELECT language_code, COUNT(*) FROM users_telegram WHERE language_code IS NOT NULL GROUP BY language_code;"
+                )
+                languages_rows = cursor.fetchall()
+                languages = {row[0]: row[1] for row in languages_rows}
 
-            return {
-                "total_users": total_users,
-                "active_today": active_today,
-                "top_users": top_users,
-                "languages": languages
-            }
+                return {
+                    "total_users": total_users,
+                    "active_today": active_today,
+                    "top_users": top_users,
+                    "languages": languages
+                }
         except Exception as e:
             print(f"Error al obtener estadísticas de usuarios: {e}")
             return {}

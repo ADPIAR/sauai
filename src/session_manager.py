@@ -41,52 +41,52 @@ class SessionManager:
         """Obtiene sesión existente o crea una nueva para el usuario."""
         with self._lock:
             try:
-                # Intentar obtener la sesión más reciente del usuario
-                self.db_manager.cursor.execute(
-                    "SELECT session_id, username, created_at, last_activity, user_preferences FROM sessions WHERE username = %s ORDER BY last_activity DESC LIMIT 1;",
-                    (username,)
-                )
-                row = self.db_manager.cursor.fetchone()
-                
-                if row:
-                    # Sesión existente, actualizar last_activity
-                    session = UserSession(
-                        session_id=row[0],
-                        username=row[1],
-                        created_at=row[2],
-                        last_activity=row[3],
-                        user_preferences=row[4] if row[4] else {}
+                with self.db_manager.get_connection() as (conn, cursor):
+                    # Intentar obtener la sesión más reciente del usuario
+                    cursor.execute(
+                        "SELECT session_id, username, created_at, last_activity, user_preferences FROM sessions WHERE username = %s ORDER BY last_activity DESC LIMIT 1;",
+                        (username,)
                     )
-                    self.db_manager.cursor.execute(
-                        "UPDATE sessions SET last_activity = %s WHERE session_id = %s;",
-                        (datetime.datetime.now(), session.session_id)
-                    )
-                    self.db_manager.conn.commit()
-                    logger.info(f"👤 Actualizando sesión existente {session.session_id} para usuario {username}")
-                    return session
-                else:
-                    # Crear nueva sesión
-                    new_session_id = uuid.uuid4() # Generar UUID en Python para la inserción
-                    self.db_manager.cursor.execute(
-                        "INSERT INTO sessions (session_id, username, created_at, last_activity) VALUES (%s, %s, %s, %s) RETURNING session_id, username, created_at, last_activity, user_preferences;",
-                        (str(new_session_id), username, datetime.datetime.now(), datetime.datetime.now())
-                    )
-                    self.db_manager.conn.commit()
-                    new_session_row = self.db_manager.cursor.fetchone()
-                    if new_session_row:
+                    row = cursor.fetchone()
+                    
+                    if row:
+                        # Sesión existente, actualizar last_activity
                         session = UserSession(
-                            session_id=new_session_row[0],
-                            username=new_session_row[1],
-                            created_at=new_session_row[2],
-                            last_activity=new_session_row[3],
-                            user_preferences=new_session_row[4] if new_session_row[4] else {}
+                            session_id=row[0],
+                            username=row[1],
+                            created_at=row[2],
+                            last_activity=row[3],
+                            user_preferences=row[4] if row[4] else {}
                         )
-                        logger.info(f"🆕 Creando nueva sesión {session.session_id} para usuario {username}")
+                        cursor.execute(
+                            "UPDATE sessions SET last_activity = %s WHERE session_id = %s;",
+                            (datetime.datetime.now(), session.session_id)
+                        )
+                        conn.commit()
+                        logger.info(f"👤 Actualizando sesión existente {session.session_id} para usuario {username}")
                         return session
                     else:
-                        raise Exception("No se pudo crear la sesión o recuperar sus datos.")
+                        # Crear nueva sesión
+                        new_session_id = uuid.uuid4() # Generar UUID en Python para la inserción
+                        cursor.execute(
+                            "INSERT INTO sessions (session_id, username, created_at, last_activity) VALUES (%s, %s, %s, %s) RETURNING session_id, username, created_at, last_activity, user_preferences;",
+                            (str(new_session_id), username, datetime.datetime.now(), datetime.datetime.now())
+                        )
+                        conn.commit()
+                        new_session_row = cursor.fetchone()
+                        if new_session_row:
+                            session = UserSession(
+                                session_id=new_session_row[0],
+                                username=new_session_row[1],
+                                created_at=new_session_row[2],
+                                last_activity=new_session_row[3],
+                                user_preferences=new_session_row[4] if new_session_row[4] else {}
+                            )
+                            logger.info(f"🆕 Creando nueva sesión {session.session_id} para usuario {username}")
+                            return session
+                        else:
+                            raise Exception("No se pudo crear la sesión o recuperar sus datos.")
             except Exception as e:
-                self.db_manager.conn.rollback()
                 logger.error(f"❌ Error en get_or_create_session para usuario {username}: {e}")
                 raise
 
@@ -94,14 +94,14 @@ class SessionManager:
         """Añade mensaje al historial de conversación de una sesión."""
         with self._lock:
             try:
-                logger.info(f"💬 Guardando mensaje en sesión {session_id} de {'usuario' if is_user else 'bot'}: {message[:50]}...")
-                self.db_manager.cursor.execute(
-                    "INSERT INTO conversation_messages (session_id, timestamp, message, is_user) VALUES (%s, %s, %s, %s);",
-                    (str(session_id), datetime.datetime.now(), message, is_user)
-                )
-                self.db_manager.conn.commit()
+                with self.db_manager.get_connection() as (conn, cursor):
+                    logger.info(f"💬 Guardando mensaje en sesión {session_id} de {'usuario' if is_user else 'bot'}: {message[:50]}...")
+                    cursor.execute(
+                        "INSERT INTO conversation_messages (session_id, timestamp, message, is_user) VALUES (%s, %s, %s, %s);",
+                        (str(session_id), datetime.datetime.now(), message, is_user)
+                    )
+                    conn.commit()
             except Exception as e:
-                self.db_manager.conn.rollback()
                 logger.error(f"❌ Error al guardar mensaje en sesión {session_id}: {e}")
                 raise
 
@@ -109,16 +109,17 @@ class SessionManager:
         """Obtiene contexto de conversación reciente para una sesión."""
         with self._lock:
             try:
-                self.db_manager.cursor.execute(
-                    "SELECT message, is_user FROM conversation_messages WHERE session_id = %s ORDER BY timestamp DESC LIMIT %s;",
-                    (str(session_id), limit)
-                )
-                rows = self.db_manager.cursor.fetchall()
-                context = []
-                for msg, is_user in reversed(rows): # Invertir para orden cronológico
-                    role = "Usuario" if is_user else "SAÚ"
-                    context.append(f"{role}: {msg}")
-                return "\n".join(context)
+                with self.db_manager.get_connection() as (conn, cursor):
+                    cursor.execute(
+                        "SELECT message, is_user FROM conversation_messages WHERE session_id = %s ORDER BY timestamp DESC LIMIT %s;",
+                        (str(session_id), limit)
+                    )
+                    rows = cursor.fetchall()
+                    context = []
+                    for msg, is_user in reversed(rows): # Invertir para orden cronológico
+                        role = "Usuario" if is_user else "SAÚ"
+                        context.append(f"{role}: {msg}")
+                    return "\n".join(context)
             except Exception as e:
                 logger.error(f"❌ Error al obtener contexto de conversación para sesión {session_id}: {e}")
                 return ""
@@ -127,16 +128,16 @@ class SessionManager:
         """Actualiza las preferencias JSONB de una sesión."""
         with self._lock:
             try:
-                # psycopg2 requiere que los JSONB se pasen como cadenas JSON
-                json_pref = json.dumps(preferences) # Convertir dict a string JSON
-                self.db_manager.cursor.execute(
-                    "UPDATE sessions SET user_preferences = user_preferences || %s::jsonb WHERE session_id = %s;",
-                    (json_pref, str(session_id))
-                )
-                self.db_manager.conn.commit()
-                logger.info(f"✅ Preferencias de sesión {session_id} actualizadas.")
+                with self.db_manager.get_connection() as (conn, cursor):
+                    # psycopg2 requiere que los JSONB se pasen como cadenas JSON
+                    json_pref = json.dumps(preferences) # Convertir dict a string JSON
+                    cursor.execute(
+                        "UPDATE sessions SET user_preferences = user_preferences || %s::jsonb WHERE session_id = %s;",
+                        (json_pref, str(session_id))
+                    )
+                    conn.commit()
+                    logger.info(f"✅ Preferencias de sesión {session_id} actualizadas.")
             except Exception as e:
-                self.db_manager.conn.rollback()
                 logger.error(f"❌ Error al actualizar preferencias de sesión {session_id}: {e}")
                 raise
 

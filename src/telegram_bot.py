@@ -77,52 +77,34 @@ class TelegramSauAI:
         task.add_done_callback(handle_task_exception)
     
     async def _process_message_async(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Procesa un mensaje de forma asíncrona - SIMPLIFICADO"""
+        """Procesa un mensaje de forma asíncrona con manejo robusto de errores"""
         if not update.message or not update.message.text or not update.message.from_user:
             return
             
+        user_id = update.message.from_user.id
+        user_message = update.message.text
+        
         try:
-            user_message = update.message.text
-            user_id = update.message.from_user.id
-            #user_name = update.message.from_user.first_name or "Usuario" # Ya no es estrictamente necesario aquí
-            
-            # Registrar o actualizar usuario en la base de datos
-            user_info = self.user_manager.create_or_update_user(update.message.from_user)
+            # Registrar o actualizar usuario en la base de datos con reintentos
+            user_info = await self._safe_user_operation(update.message.from_user)
             
             # Obtener username para la sesión
             username = update.message.from_user.username or f"user_{user_id}"
             
-            # Obtener o crear sesión del usuario
-            user_session = self.session_manager.get_or_create_session(username)
+            # Obtener o crear sesión del usuario con reintentos
+            user_session = await self._safe_session_operation(username)
             
             # Guardar mensaje del usuario en historial usando session_id
-            self.session_manager.add_message_to_history(user_session.session_id, user_message, is_user=True)
+            await self._safe_add_message(user_session.session_id, user_message, is_user=True)
             
             # Mostrar que el bot está escribiendo
             await update.message.reply_chat_action("typing")
             
-            # Procesar mensaje con SauAI
-            loop = asyncio.get_event_loop()
-            
-            try:
-                response = await asyncio.wait_for(
-                    loop.run_in_executor(
-                        self.executor,
-                        self._process_with_sauai,
-                        username, # Pasar username
-                        user_session.session_id, # Pasar session_id
-                        user_message
-                    ),
-                    timeout=60
-                )
-            except asyncio.TimeoutError:
-                response = "❌ Lo siento, el procesamiento está tomando demasiado tiempo. Por favor, intenta con una pregunta más simple."
-            except Exception as e:
-                logger.error(f"❌ Error en executor para usuario {user_id}: {e}")
-                response = "❌ Lo siento, ocurrió un error al procesar tu pregunta. Por favor, intenta nuevamente."
+            # Procesar mensaje con SauAI con timeout y reintentos
+            response = await self._safe_process_with_sauai(username, user_session.session_id, user_message)
             
             # Guardar respuesta en historial usando session_id
-            self.session_manager.add_message_to_history(user_session.session_id, response, is_user=False)
+            await self._safe_add_message(user_session.session_id, response, is_user=False)
             
             # Enviar respuesta de forma simple
             await self._send_response(update, response)
@@ -134,6 +116,87 @@ class TelegramSauAI:
                     "❌ Lo siento, ocurrió un error al procesar tu pregunta. Por favor, intenta nuevamente."
                 )
     
+    async def _safe_user_operation(self, user_data):
+        """Operación segura para crear/actualizar usuario con reintentos"""
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                loop = asyncio.get_event_loop()
+                return await loop.run_in_executor(
+                    self.executor,
+                    self.user_manager.create_or_update_user,
+                    user_data
+                )
+            except Exception as e:
+                logger.warning(f"⚠️ Intento {attempt + 1} fallido para operación de usuario: {e}")
+                if attempt == max_retries - 1:
+                    raise
+                await asyncio.sleep(1)  # Esperar antes del siguiente intento
+
+    async def _safe_session_operation(self, username: str):
+        """Operación segura para obtener/crear sesión con reintentos"""
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                loop = asyncio.get_event_loop()
+                return await loop.run_in_executor(
+                    self.executor,
+                    self.session_manager.get_or_create_session,
+                    username
+                )
+            except Exception as e:
+                logger.warning(f"⚠️ Intento {attempt + 1} fallido para operación de sesión: {e}")
+                if attempt == max_retries - 1:
+                    raise
+                await asyncio.sleep(1)  # Esperar antes del siguiente intento
+
+    async def _safe_add_message(self, session_id: uuid.UUID, message: str, is_user: bool = True):
+        """Operación segura para agregar mensaje con reintentos"""
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                loop = asyncio.get_event_loop()
+                await loop.run_in_executor(
+                    self.executor,
+                    self.session_manager.add_message_to_history,
+                    session_id,
+                    message,
+                    is_user
+                )
+                return
+            except Exception as e:
+                logger.warning(f"⚠️ Intento {attempt + 1} fallido para agregar mensaje: {e}")
+                if attempt == max_retries - 1:
+                    raise
+                await asyncio.sleep(1)  # Esperar antes del siguiente intento
+
+    async def _safe_process_with_sauai(self, username: str, session_id: uuid.UUID, user_message: str) -> str:
+        """Procesa un mensaje con SauAI de forma segura con timeout y reintentos"""
+        max_retries = 2
+        for attempt in range(max_retries):
+            try:
+                loop = asyncio.get_event_loop()
+                response = await asyncio.wait_for(
+                    loop.run_in_executor(
+                        self.executor,
+                        self._process_with_sauai,
+                        username,
+                        session_id,
+                        user_message
+                    ),
+                    timeout=60
+                )
+                return response
+            except asyncio.TimeoutError:
+                logger.warning(f"⚠️ Timeout en intento {attempt + 1} para usuario {username}")
+                if attempt == max_retries - 1:
+                    return "❌ Lo siento, el procesamiento está tomando demasiado tiempo. Por favor, intenta con una pregunta más simple."
+            except Exception as e:
+                logger.warning(f"⚠️ Error en intento {attempt + 1} para usuario {username}: {e}")
+                if attempt == max_retries - 1:
+                    return "❌ Lo siento, ocurrió un error al procesar tu pregunta. Por favor, intenta nuevamente."
+                await asyncio.sleep(2)  # Esperar antes del siguiente intento
+
     def _process_with_sauai(self, username: str, session_id: uuid.UUID, user_message: str) -> str:
         """Procesa un mensaje con SauAI - SIMPLIFICADO"""
         try:
