@@ -5,7 +5,7 @@ import os
 from pinecone import Pinecone
 from langchain import PromptTemplate
 from langchain.chains import RetrievalQA
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_openai import ChatOpenAI
 
 
 class SauAI:
@@ -38,11 +38,11 @@ class SauAI:
             embedding=self.embeddings
         )
         
-        # Inicializar modelo de chat Google Gemini
-        self.llm = ChatGoogleGenerativeAI(
-            model="gemini-2.5-flash",
+        # Inicializar modelo de chat OpenAI
+        self.llm = ChatOpenAI(
+            model="gpt-5-mini-2025-08-07",
             temperature=0.7,
-            google_api_key=os.getenv('GOOGLE_API_KEY')
+            openai_api_key=os.getenv('OPENAI_API_KEY')
         )
         
         # Configurar system prompt predeterminado
@@ -620,7 +620,7 @@ class SauAI:
         return {
             "index_name": self.index_name,
             "embedding_model": "text-embedding-3-large",
-            "chat_model": "gemini-2.5-flash", 
+            "chat_model": "gpt-5-mini-2025-08-07", 
             "search_k": 3,
             "bot_name": "Saú AI",
             "specialty": "Asistente especializado en vida saludable y salud preventiva"
