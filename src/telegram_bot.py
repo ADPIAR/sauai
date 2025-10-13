@@ -124,7 +124,7 @@ class TelegramSauAI:
             try:
                 loop = asyncio.get_event_loop()
                 return await loop.run_in_executor(
-                    self.executor,
+                    None,  # Usar el executor por defecto del loop
                     self.user_manager.create_or_update_user,
                     user_data
                 )
