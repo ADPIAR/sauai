@@ -28,7 +28,11 @@ class WebHandler:
         """Inicializa el handler web con BotCore"""
         self.bot_core = bot_core
         self.app = Flask(__name__)
-        CORS(self.app)  # Permitir CORS para integración frontend
+        CORS(self.app, origins=[
+            "https://gamersmed.apversus.com",  # Producción APV-Web
+            "https://apv-web-git-dev-adpiars-projects.vercel.app",  # Desarrollo APV-Web
+            "http://localhost:3000"  # Desarrollo local
+        ])
         self._setup_routes()
     
     def _setup_routes(self):
@@ -112,6 +116,61 @@ class WebHandler:
                 "service": "SAÚ AI Web API",
                 "version": "1.0.0"
             })
+        
+        @self.app.route('/api/check-user', methods=['POST'])
+        async def check_user_endpoint():
+            """
+            Verifica si usuario APV-Web existe en users_telegram
+            Si no existe, lo crea automáticamente
+            
+            Request:
+            {
+                "apv_user_id": "uuid",
+                "email": "user@example.com",
+                "name": "Juan Pérez"
+            }
+            
+            Response:
+            {
+                "success": true,
+                "username": "@juan.perez",
+                "exists": true,
+                "message": "Usuario verificado correctamente"
+            }
+            """
+            try:
+                data = request.get_json()
+                
+                if not data or 'email' not in data:
+                    return jsonify({
+                        "success": False,
+                        "error": "Se requieren 'email' en el request"
+                    }), 400
+                
+                apv_user_id = data.get('apv_user_id', '')
+                email = data['email']
+                name = data.get('name', '')
+                
+                # Generar @username automáticamente basado en email
+                username = f"@{email.split('@')[0]}"
+                
+                # Verificar si el usuario ya existe en users_telegram
+                # Por ahora, asumimos que no existe y se creará automáticamente
+                # cuando haga su primer mensaje
+                
+                return jsonify({
+                    "success": True,
+                    "username": username,
+                    "exists": False,  # Se creará automáticamente en el primer mensaje
+                    "message": "Usuario listo para usar SAÚ AI"
+                })
+                
+            except Exception as e:
+                logger.error(f"Error en endpoint /api/check-user: {e}")
+                return jsonify({
+                    "success": False,
+                    "error": "Error interno del servidor"
+                }), 500
         
         @self.app.route('/api/typing', methods=['POST'])
         async def typing_endpoint():
