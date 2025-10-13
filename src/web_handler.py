@@ -113,8 +113,14 @@ class WebHandler:
             """Endpoint de salud para verificar que el servicio está funcionando"""
             return jsonify({
                 "status": "healthy",
+                "message": "SAÚ AI Backend is running",
                 "service": "SAÚ AI Web API",
-                "version": "1.0.0"
+                "version": "1.0.0",
+                "endpoints": {
+                    "chat": "/api/chat",
+                    "check_user": "/api/check-user",
+                    "typing": "/api/typing"
+                }
             })
         
         @self.app.route('/api/check-user', methods=['POST'])
@@ -202,6 +208,8 @@ class WebHandler:
     
     def run(self, host='0.0.0.0', port=5000, debug=False):
         """Ejecuta el servidor web"""
+        print(f"🌐 SAÚ AI Web Server iniciando en {host}:{port}")
+        print(f"🔗 Health check disponible en: http://{host}:{port}/api/health")
         logger.info(f"🌐 Iniciando servidor web en {host}:{port}")
         self.app.run(host=host, port=port, debug=debug)
 
