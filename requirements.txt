@@ -8,7 +8,6 @@ langchain-openai>=0.1.0
 # APIs y bases de datos
 openai>=1.0.0
 pinecone>=4.0.0
-python-telegram-bot>=20.7
 
 # Utilidades
 python-dotenv>=1.0.0
