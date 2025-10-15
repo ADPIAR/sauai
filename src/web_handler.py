@@ -39,7 +39,7 @@ class WebHandler:
         """Configura las rutas de la API web"""
         
         @self.app.route('/api/chat', methods=['POST'])
-        async def chat_endpoint():
+        def chat_endpoint():
             """
             Endpoint para procesar mensajes desde la web
             
@@ -88,8 +88,8 @@ class WebHandler:
                     }
                 )
                 
-                # Procesar mensaje usando BotCore
-                response = await self.bot_core.process_message(message_input)
+                # Procesar mensaje usando BotCore (síncrono)
+                response = asyncio.run(self.bot_core.process_message(message_input))
                 
                 # Retornar respuesta en formato JSON
                 return jsonify({
@@ -124,7 +124,7 @@ class WebHandler:
             })
         
         @self.app.route('/api/check-user', methods=['POST'])
-        async def check_user_endpoint():
+        def check_user_endpoint():
             """
             Verifica si usuario APV-Web existe en users_telegram
             Si no existe, lo crea automáticamente
@@ -179,7 +179,7 @@ class WebHandler:
                 }), 500
         
         @self.app.route('/api/typing', methods=['POST'])
-        async def typing_endpoint():
+        def typing_endpoint():
             """
             Endpoint para simular indicador de typing
             Útil para mostrar que el bot está procesando
