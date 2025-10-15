@@ -122,13 +122,12 @@ class BotCore:
             )
     
     async def _safe_session_operation(self, username: str):
-        """Operación segura para obtener/crear sesión con reintentos"""
-        max_retries = 3
-        for attempt in range(max_retries):
+        """Obtiene sesión de forma segura con reintentos."""
+        for attempt in range(3):
             try:
                 loop = asyncio.get_event_loop()
                 
-                # Primero verificar si el usuario existe, si no, crearlo
+                # Obtener usuario (debe existir en users)
                 user_info = await loop.run_in_executor(
                     self.executor,
                     self.user_manager.get_user,
@@ -136,27 +135,23 @@ class BotCore:
                 )
                 
                 if not user_info:
-                    # Crear usuario web automáticamente
-                    logger.info(f"🆕 Creando usuario web automáticamente: {username}")
-                    await loop.run_in_executor(
-                        self.executor,
-                        self.user_manager.create_web_user,
-                        username,
-                        username.replace('@', ''),  # Usar username como nombre
-                        ""  # Email vacío
-                    )
+                    raise Exception(f"Usuario {username.lstrip('@')} no encontrado en la tabla users")
                 
-                # Ahora crear/obtener la sesión
+                # Obtener o crear sesión
                 return await loop.run_in_executor(
                     self.executor,
                     self.session_manager.get_or_create_session,
-                    username
+                    username,
+                    user_info
                 )
+                
             except Exception as e:
-                logger.warning(f"⚠️ Intento {attempt + 1} fallido para operación de sesión: {e}")
-                if attempt == max_retries - 1:
+                if attempt < 2:
+                    logger.warning(f"⚠️ Intento {attempt + 1} fallido para operación de sesión: {e}")
+                    await asyncio.sleep(1)
+                else:
+                    logger.error(f"❌ Falló operación de sesión después de 3 intentos: {e}")
                     raise
-                await asyncio.sleep(1)  # Esperar antes del siguiente intento
 
     async def _safe_add_message(self, session_id: uuid.UUID, message: str, is_user: bool = True):
         """Operación segura para agregar mensaje con reintentos"""

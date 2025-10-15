@@ -142,32 +142,10 @@ class DatabaseManager:
         """Crea las tablas necesarias usando el pool de conexiones"""
         try:
             with self.get_connection() as (conn, cursor):
-                # Tabla users_telegram - Nueva tabla para usuarios de Telegram
-                cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS users_telegram (
-                        username VARCHAR(255) PRIMARY KEY,
-                        telegram_user_id BIGINT UNIQUE,
-                        first_name VARCHAR(255),
-                        last_name VARCHAR(255),
-                        language_code VARCHAR(10),
-                        is_premium BOOLEAN,
-                        first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        message_count INTEGER DEFAULT 0,
-                        favorite_topics TEXT[] DEFAULT ARRAY[]::TEXT[],
-                        personal_name VARCHAR(255),
-                        age INTEGER,
-                        user_needs TEXT
-                    );
-                """)
-                conn.commit()
-                logger.info("✅ Tabla 'users_telegram' creada/verificada")
-
-                # Tabla sessions - Crear después de users_telegram
+                # Tabla sessions (ya sin FK a users_telegram)
                 cursor.execute("""
                     CREATE TABLE IF NOT EXISTS sessions (
                         session_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                        username VARCHAR(255) REFERENCES users_telegram(username) ON DELETE CASCADE,
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         user_preferences JSONB DEFAULT '{}'::jsonb

@@ -37,60 +37,62 @@ class SessionManager:
         # No es necesario cargar sesiones aquí, se obtienen/crean on-demand
         logger.info("✅ SessionManager inicializado")
     
-    def get_or_create_session(self, username: str) -> UserSession:
-        """Obtiene sesión existente o crea una nueva para el usuario."""
+    def get_or_create_session(self, username: str, user_info) -> UserSession:
+        """Obtiene sesión existente o crea una nueva."""
         with self._lock:
             try:
                 with self.db_manager.get_connection() as (conn, cursor):
-                    # Limpiar username removiendo @ si existe
                     username_clean = username.lstrip('@')
                     
-                    # Intentar obtener la sesión más reciente del usuario
-                    cursor.execute(
-                        "SELECT session_id, username, created_at, last_activity, user_preferences FROM sessions WHERE username = %s ORDER BY last_activity DESC LIMIT 1;",
-                        (username_clean,)
-                    )
-                    row = cursor.fetchone()
-                    
-                    if row:
-                        # Sesión existente, actualizar last_activity
-                        session = UserSession(
-                            session_id=row[0],
-                            username=row[1],
-                            created_at=row[2],
-                            last_activity=row[3],
-                            user_preferences=row[4] if row[4] else {}
-                        )
+                    # Si el usuario ya tiene session_id, buscarla
+                    if user_info.session_id:
                         cursor.execute(
-                            "UPDATE sessions SET last_activity = %s WHERE session_id = %s;",
-                            (datetime.datetime.now(), session.session_id)
+                            "SELECT session_id, created_at, last_activity, user_preferences FROM sessions WHERE session_id = %s;",
+                            (str(user_info.session_id),)
                         )
-                        conn.commit()
-                        logger.info(f"👤 Actualizando sesión existente {session.session_id} para usuario {username_clean}")
-                        return session
-                    else:
-                        # Crear nueva sesión
-                        new_session_id = uuid.uuid4() # Generar UUID en Python para la inserción
-                        cursor.execute(
-                            "INSERT INTO sessions (session_id, username, created_at, last_activity) VALUES (%s, %s, %s, %s) RETURNING session_id, username, created_at, last_activity, user_preferences;",
-                            (str(new_session_id), username_clean, datetime.datetime.now(), datetime.datetime.now())
-                        )
-                        conn.commit()
-                        new_session_row = cursor.fetchone()
-                        if new_session_row:
-                            session = UserSession(
-                                session_id=new_session_row[0],
-                                username=new_session_row[1],
-                                created_at=new_session_row[2],
-                                last_activity=new_session_row[3],
-                                user_preferences=new_session_row[4] if new_session_row[4] else {}
+                        row = cursor.fetchone()
+                        
+                        if row:
+                            # Actualizar last_activity
+                            cursor.execute(
+                                "UPDATE sessions SET last_activity = %s WHERE session_id = %s;",
+                                (datetime.datetime.now(), str(user_info.session_id))
                             )
-                            logger.info(f"🆕 Creando nueva sesión {session.session_id} para usuario {username_clean}")
-                            return session
-                        else:
-                            raise Exception("No se pudo crear la sesión o recuperar sus datos.")
+                            conn.commit()
+                            return UserSession(
+                                session_id=row[0],
+                                username=username_clean,
+                                created_at=row[1],
+                                last_activity=row[2],
+                                user_preferences=row[3] if row[3] else {}
+                            )
+                    
+                    # Crear nueva sesión
+                    new_session_id = uuid.uuid4()
+                    cursor.execute(
+                        "INSERT INTO sessions (session_id, created_at, last_activity) VALUES (%s, %s, %s) RETURNING session_id, created_at, last_activity, user_preferences;",
+                        (str(new_session_id), datetime.datetime.now(), datetime.datetime.now())
+                    )
+                    conn.commit()
+                    new_row = cursor.fetchone()
+                    
+                    # Actualizar users.session_id
+                    cursor.execute(
+                        "UPDATE users SET session_id = %s WHERE telegram_username = %s;",
+                        (str(new_session_id), username_clean)
+                    )
+                    conn.commit()
+                    
+                    return UserSession(
+                        session_id=new_row[0],
+                        username=username_clean,
+                        created_at=new_row[1],
+                        last_activity=new_row[2],
+                        user_preferences=new_row[3] if new_row[3] else {}
+                    )
+                    
             except Exception as e:
-                logger.error(f"❌ Error en get_or_create_session para usuario {username}: {e}")
+                logger.error(f"Error en get_or_create_session: {e}")
                 raise
 
     def add_message_to_history(self, session_id: uuid.UUID, message: str, is_user: bool = True):
