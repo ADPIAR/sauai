@@ -42,9 +42,10 @@ class UserManager:
         """Obtiene un usuario de la base de datos por su username."""
         try:
             with self.db_manager.get_connection() as (conn, cursor):
+                username_clean = username.lstrip('@')  # Remover @ si existe
                 cursor.execute(
                     "SELECT username, telegram_user_id, first_name, last_name, language_code, is_premium, first_seen, last_seen, message_count, favorite_topics, personal_name, age, user_needs FROM users_telegram WHERE username = %s;",
-                    (username,)
+                    (username_clean,)
                 )
                 row = cursor.fetchone()
                 if row:
