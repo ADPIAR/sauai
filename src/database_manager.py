@@ -36,12 +36,17 @@ class DatabaseManager:
                 host=url.hostname,
                 port=url.port,
                 # Configuraciones para mejorar la estabilidad
-                connect_timeout=10,
+                connect_timeout=30,
                 application_name='sau-bot',
                 keepalives=1,
-                keepalives_idle=600,
+                keepalives_idle=300,
                 keepalives_interval=30,
-                keepalives_count=3
+                keepalives_count=3,
+                # Configuraciones SSL para Railway
+                sslmode='require',
+                sslcert=None,
+                sslkey=None,
+                sslrootcert=None
             )
             logger.info("✅ Pool de conexiones PostgreSQL configurado exitosamente")
         except Exception as e:
