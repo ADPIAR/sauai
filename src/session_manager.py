@@ -42,10 +42,13 @@ class SessionManager:
         with self._lock:
             try:
                 with self.db_manager.get_connection() as (conn, cursor):
+                    # Limpiar username removiendo @ si existe
+                    username_clean = username.lstrip('@')
+                    
                     # Intentar obtener la sesión más reciente del usuario
                     cursor.execute(
                         "SELECT session_id, username, created_at, last_activity, user_preferences FROM sessions WHERE username = %s ORDER BY last_activity DESC LIMIT 1;",
-                        (username,)
+                        (username_clean,)
                     )
                     row = cursor.fetchone()
                     
@@ -63,14 +66,14 @@ class SessionManager:
                             (datetime.datetime.now(), session.session_id)
                         )
                         conn.commit()
-                        logger.info(f"👤 Actualizando sesión existente {session.session_id} para usuario {username}")
+                        logger.info(f"👤 Actualizando sesión existente {session.session_id} para usuario {username_clean}")
                         return session
                     else:
                         # Crear nueva sesión
                         new_session_id = uuid.uuid4() # Generar UUID en Python para la inserción
                         cursor.execute(
                             "INSERT INTO sessions (session_id, username, created_at, last_activity) VALUES (%s, %s, %s, %s) RETURNING session_id, username, created_at, last_activity, user_preferences;",
-                            (str(new_session_id), username, datetime.datetime.now(), datetime.datetime.now())
+                            (str(new_session_id), username_clean, datetime.datetime.now(), datetime.datetime.now())
                         )
                         conn.commit()
                         new_session_row = cursor.fetchone()
@@ -82,7 +85,7 @@ class SessionManager:
                                 last_activity=new_session_row[3],
                                 user_preferences=new_session_row[4] if new_session_row[4] else {}
                             )
-                            logger.info(f"🆕 Creando nueva sesión {session.session_id} para usuario {username}")
+                            logger.info(f"🆕 Creando nueva sesión {session.session_id} para usuario {username_clean}")
                             return session
                         else:
                             raise Exception("No se pudo crear la sesión o recuperar sus datos.")
