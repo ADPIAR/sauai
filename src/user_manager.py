@@ -214,16 +214,17 @@ class UserManager:
                 if existing_user:
                     return existing_user
                 
-                # Buscar el usuario en la tabla users por telegram_username
+                # Buscar el usuario en la tabla users por telegram_username (sin @)
+                username_clean = username.lstrip('@')  # Remover @ si existe
                 user_sql = """
                     SELECT telegram_username, name, email FROM users 
                     WHERE telegram_username = %s;
                 """
-                cursor.execute(user_sql, (username,))
+                cursor.execute(user_sql, (username_clean,))
                 user_row = cursor.fetchone()
                 
                 if not user_row:
-                    raise Exception(f"Usuario {username} no encontrado en la tabla users")
+                    raise Exception(f"Usuario {username_clean} no encontrado en la tabla users")
                 
                 telegram_username, user_name, user_email = user_row
                 
