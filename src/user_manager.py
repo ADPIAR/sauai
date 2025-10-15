@@ -214,11 +214,7 @@ class UserManager:
                 if existing_user:
                     return existing_user
                 
-                # Crear nuevo usuario web
-                # Para usuarios web, usamos un telegram_user_id ficticio basado en el hash del username
-                import hashlib
-                telegram_user_id = int(hashlib.md5(username.encode()).hexdigest()[:8], 16)
-                
+                # Crear nuevo usuario web sin telegram_user_id (será NULL)
                 sql = """
                     INSERT INTO users_telegram (username, telegram_user_id, first_name, last_name,
                                        language_code, is_premium, first_seen,
@@ -227,7 +223,7 @@ class UserManager:
                     RETURNING *;
                 """
                 params = (
-                    username, telegram_user_id, name, "", "es", False, 
+                    username, None, name, "", "es", False, 
                     datetime.datetime.now(), datetime.datetime.now(), 0, name
                 )
                 
@@ -238,7 +234,7 @@ class UserManager:
                 if new_user_row:
                     return UserInfo(
                         username=new_user_row[0],
-                        telegram_user_id=new_user_row[1],
+                        telegram_user_id=new_user_row[1] if new_user_row[1] else 0,  # 0 para usuarios web
                         first_name=new_user_row[2],
                         last_name=new_user_row[3],
                         language_code=new_user_row[4],

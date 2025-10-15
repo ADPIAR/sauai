@@ -55,6 +55,8 @@ class DatabaseManager:
         cursor = None
         try:
             conn = self.connection_pool.getconn()
+            if conn is None:
+                raise Exception("No se pudo obtener conexión del pool")
             cursor = conn.cursor()
             yield conn, cursor
         except psycopg2.OperationalError as e:
@@ -77,9 +79,16 @@ class DatabaseManager:
             raise
         finally:
             if cursor:
-                cursor.close()
+                try:
+                    cursor.close()
+                except Exception as e:
+                    logger.debug(f"Error cerrando cursor: {e}")
             if conn:
-                self.connection_pool.putconn(conn)
+                try:
+                    self.connection_pool.putconn(conn)
+                except Exception as e:
+                    logger.error(f"❌ Error al devolver conexión al pool: {e}")
+                    # No re-raise aquí para evitar el error "trying to put unkeyed connection"
 
     def _reconnect(self):
         """Reconecta el pool de conexiones en caso de error"""
@@ -116,7 +125,7 @@ class DatabaseManager:
                 cursor.execute("""
                     CREATE TABLE IF NOT EXISTS users_telegram (
                         username VARCHAR(255) PRIMARY KEY,
-                        telegram_user_id BIGINT UNIQUE NOT NULL,
+                        telegram_user_id BIGINT UNIQUE,
                         first_name VARCHAR(255),
                         last_name VARCHAR(255),
                         language_code VARCHAR(10),
