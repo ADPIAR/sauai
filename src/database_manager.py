@@ -54,20 +54,26 @@ class DatabaseManager:
         conn = None
         cursor = None
         try:
+            # Verificar si el pool está disponible
+            if not self.connection_pool:
+                logger.warning("⚠️ Pool de conexiones no disponible, intentando reconectar...")
+                self._reconnect()
+            
             conn = self.connection_pool.getconn()
             if conn is None:
                 raise Exception("No se pudo obtener conexión del pool")
             cursor = conn.cursor()
             yield conn, cursor
-        except psycopg2.OperationalError as e:
+        except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
             logger.warning(f"⚠️ Error de conexión detectado: {e}")
             if conn:
                 try:
                     conn.rollback()
                 except:
                     pass
-            # Intentar reconectar
-            self._reconnect()
+            # Intentar reconectar solo si el error es de conexión
+            if "connection" in str(e).lower() or "pool" in str(e).lower():
+                self._reconnect()
             raise
         except Exception as e:
             logger.error(f"❌ Error en operación de base de datos: {e}")
@@ -83,7 +89,7 @@ class DatabaseManager:
                     cursor.close()
                 except Exception as e:
                     logger.debug(f"Error cerrando cursor: {e}")
-            if conn:
+            if conn and self.connection_pool:
                 try:
                     self.connection_pool.putconn(conn)
                 except Exception as e:
@@ -94,13 +100,23 @@ class DatabaseManager:
         """Reconecta el pool de conexiones en caso de error"""
         try:
             logger.info("🔄 Intentando reconectar a la base de datos...")
+            # Cerrar pool existente de forma segura
             if self.connection_pool:
-                self.connection_pool.closeall()
-            time.sleep(2)  # Esperar antes de reconectar
+                try:
+                    self.connection_pool.closeall()
+                except Exception as e:
+                    logger.debug(f"Error cerrando pool existente: {e}")
+                self.connection_pool = None
+            
+            # Esperar antes de reconectar
+            time.sleep(2)
+            
+            # Crear nuevo pool
             self._setup_connection_pool()
             logger.info("✅ Reconexión exitosa")
         except Exception as e:
             logger.error(f"❌ Error durante reconexión: {e}")
+            self.connection_pool = None
             raise
 
     def _connect(self):
