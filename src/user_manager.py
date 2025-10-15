@@ -214,20 +214,32 @@ class UserManager:
                 if existing_user:
                     return existing_user
                 
-                # Crear nuevo usuario web sin telegram_user_id (será NULL)
-                sql = """
+                # Primero crear el usuario en la tabla users
+                user_sql = """
+                    INSERT INTO users (telegram_username, name, email, created_at, updated_at)
+                    VALUES (%s, %s, %s, %s, %s)
+                    RETURNING id;
+                """
+                now = datetime.datetime.now()
+                user_params = (username, name, email, now, now)
+                
+                cursor.execute(user_sql, user_params)
+                user_id = cursor.fetchone()[0]
+                
+                # Luego crear el usuario en users_telegram sin telegram_user_id (será NULL)
+                telegram_sql = """
                     INSERT INTO users_telegram (username, telegram_user_id, first_name, last_name,
                                        language_code, is_premium, first_seen,
                                        last_seen, message_count, personal_name)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     RETURNING *;
                 """
-                params = (
+                telegram_params = (
                     username, None, name, "", "es", False, 
-                    datetime.datetime.now(), datetime.datetime.now(), 0, name
+                    now, now, 0, name
                 )
                 
-                cursor.execute(sql, params)
+                cursor.execute(telegram_sql, telegram_params)
                 conn.commit()
                 new_user_row = cursor.fetchone()
                 
