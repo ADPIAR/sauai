@@ -216,17 +216,17 @@ class UserManager:
                 
                 # Primero crear el usuario en la tabla users
                 user_sql = """
-                    INSERT INTO users (telegram_username, name, email, created_at, updated_at)
-                    VALUES (%s, %s, %s, %s, %s)
-                    RETURNING id;
+                    INSERT INTO users (telegram_username, name, email, created_at)
+                    VALUES (%s, %s, %s, %s)
+                    RETURNING telegram_username;
                 """
                 now = datetime.datetime.now()
-                user_params = (username, name, email, now, now)
+                user_params = (username, name, email, now)
                 
                 cursor.execute(user_sql, user_params)
-                user_id = cursor.fetchone()[0]
+                telegram_username = cursor.fetchone()[0]
                 
-                # Luego crear el usuario en users_telegram sin telegram_user_id (será NULL)
+                # Luego crear el usuario en users_telegram usando el telegram_username de users
                 telegram_sql = """
                     INSERT INTO users_telegram (username, telegram_user_id, first_name, last_name,
                                        language_code, is_premium, first_seen,
@@ -235,7 +235,7 @@ class UserManager:
                     RETURNING *;
                 """
                 telegram_params = (
-                    username, None, name, "", "es", False, 
+                    telegram_username, None, name, "", "es", False, 
                     now, now, 0, name
                 )
                 
