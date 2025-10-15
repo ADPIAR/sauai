@@ -214,19 +214,20 @@ class UserManager:
                 if existing_user:
                     return existing_user
                 
-                # Primero crear el usuario en la tabla users
+                # Buscar el usuario en la tabla users por telegram_username
                 user_sql = """
-                    INSERT INTO users (telegram_username, name, email, created_at)
-                    VALUES (%s, %s, %s, %s)
-                    RETURNING telegram_username;
+                    SELECT telegram_username, name, email FROM users 
+                    WHERE telegram_username = %s;
                 """
-                now = datetime.datetime.now()
-                user_params = (username, name, email, now)
+                cursor.execute(user_sql, (username,))
+                user_row = cursor.fetchone()
                 
-                cursor.execute(user_sql, user_params)
-                telegram_username = cursor.fetchone()[0]
+                if not user_row:
+                    raise Exception(f"Usuario {username} no encontrado en la tabla users")
                 
-                # Luego crear el usuario en users_telegram usando el telegram_username de users
+                telegram_username, user_name, user_email = user_row
+                
+                # Crear el usuario en users_telegram usando el telegram_username de users
                 telegram_sql = """
                     INSERT INTO users_telegram (username, telegram_user_id, first_name, last_name,
                                        language_code, is_premium, first_seen,
@@ -234,9 +235,10 @@ class UserManager:
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     RETURNING *;
                 """
+                now = datetime.datetime.now()
                 telegram_params = (
-                    telegram_username, None, name, "", "es", False, 
-                    now, now, 0, name
+                    telegram_username, None, user_name or name, "", "es", False, 
+                    now, now, 0, user_name or name
                 )
                 
                 cursor.execute(telegram_sql, telegram_params)
