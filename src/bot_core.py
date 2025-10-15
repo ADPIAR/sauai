@@ -127,6 +127,26 @@ class BotCore:
         for attempt in range(max_retries):
             try:
                 loop = asyncio.get_event_loop()
+                
+                # Primero verificar si el usuario existe, si no, crearlo
+                user_info = await loop.run_in_executor(
+                    self.executor,
+                    self.user_manager.get_user,
+                    username
+                )
+                
+                if not user_info:
+                    # Crear usuario web automáticamente
+                    logger.info(f"🆕 Creando usuario web automáticamente: {username}")
+                    await loop.run_in_executor(
+                        self.executor,
+                        self.user_manager.create_web_user,
+                        username,
+                        username.replace('@', ''),  # Usar username como nombre
+                        ""  # Email vacío
+                    )
+                
+                # Ahora crear/obtener la sesión
                 return await loop.run_in_executor(
                     self.executor,
                     self.session_manager.get_or_create_session,

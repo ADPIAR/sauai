@@ -194,3 +194,66 @@ class UserManager:
         except Exception as e:
             print(f"Error al obtener estadísticas de usuarios: {e}")
             return {}
+
+    def create_web_user(self, username: str, name: str = "", email: str = "") -> UserInfo:
+        """
+        Crea un usuario web en la base de datos.
+        
+        Args:
+            username: Username del usuario (ej: @test)
+            name: Nombre del usuario
+            email: Email del usuario
+            
+        Returns:
+            UserInfo: Información del usuario creado
+        """
+        try:
+            with self.db_manager.get_connection() as (conn, cursor):
+                # Verificar si el usuario ya existe
+                existing_user = self.get_user(username)
+                if existing_user:
+                    return existing_user
+                
+                # Crear nuevo usuario web
+                # Para usuarios web, usamos un telegram_user_id ficticio basado en el hash del username
+                import hashlib
+                telegram_user_id = int(hashlib.md5(username.encode()).hexdigest()[:8], 16)
+                
+                sql = """
+                    INSERT INTO users_telegram (username, telegram_user_id, first_name, last_name,
+                                       language_code, is_premium, first_seen,
+                                       last_seen, message_count, personal_name)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    RETURNING *;
+                """
+                params = (
+                    username, telegram_user_id, name, "", "es", False, 
+                    datetime.datetime.now(), datetime.datetime.now(), 0, name
+                )
+                
+                cursor.execute(sql, params)
+                conn.commit()
+                new_user_row = cursor.fetchone()
+                
+                if new_user_row:
+                    return UserInfo(
+                        username=new_user_row[0],
+                        telegram_user_id=new_user_row[1],
+                        first_name=new_user_row[2],
+                        last_name=new_user_row[3],
+                        language_code=new_user_row[4],
+                        is_premium=new_user_row[5],
+                        first_seen=new_user_row[6],
+                        last_seen=new_user_row[7],
+                        message_count=new_user_row[8],
+                        favorite_topics=new_user_row[9] if new_user_row[9] else [],
+                        personal_name=new_user_row[10],
+                        age=new_user_row[11],
+                        user_needs=new_user_row[12]
+                    )
+                else:
+                    raise Exception("No se pudo crear el usuario web")
+                    
+        except Exception as e:
+            print(f"Error al crear usuario web {username}: {e}")
+            raise
