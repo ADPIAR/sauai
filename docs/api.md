@@ -42,7 +42,7 @@ POST /api/chat HTTP/1.1
 Content-Type: application/json
 
 {
-  "username": "@usuario",
+  "name": "Julian",
   "message": "Hola, ¿cómo estás?",
   "metadata": {
     "client": "web",
@@ -67,24 +67,24 @@ Respuesta 200:
 ```
 
 Errores:
-- 400 si falta `username` o `message`.
+- 400 si falta `name` o `message`.
 - 500 si hay error interno (p. ej., redes, LLM, Pinecone).
 
 Buenas prácticas:
-- Usa un `username` estable (ej. derivado de email).
+- Usa un `name` que exista en la tabla `users` de la base de datos.
 - Maneja estados de "escribiendo" con `/api/typing` si lo deseas.
 
 ### POST /api/check-user
-Genera/verifica un `@username` basado en email para clientes web.
+Verifica si un usuario existe en la base de datos por su `name`.
 
 Request:
 ```json
-{ "apv_user_id": "uuid", "email": "user@example.com", "name": "Nombre" }
+{ "name": "Julian" }
 ```
 
 Respuesta 200:
 ```json
-{ "success": true, "username": "@user", "exists": false, "message": "Usuario listo" }
+{ "success": true, "exists": true, "message": "Usuario encontrado" }
 ```
 
 ### POST /api/typing (opcional)

@@ -11,10 +11,10 @@ Esta aplicación es una API web que expone endpoints para conversar con SAÚ. Po
 - Despliegue: Railway usando `Procfile` y `railway.json`.
 
 ## Flujo extremo a extremo (E2E)
-1) El frontend envía `POST /api/chat` con `{ username, message }`.
+1) El frontend envía `POST /api/chat` con `{ name, message }`.
 2) Flask valida que existan los campos requeridos y construye un objeto de entrada con metadatos (IP, user-agent).
-3) `BotCore` consulta datos del usuario (nombre, edad, objetivos) y recupera el contexto reciente de la sesión.
-4) `BotCore` compone una "pregunta enriquecida" (mensaje + contexto) y llama a `SauAI`.
+3) `BotCore` busca el usuario por `name` en la tabla `users` y recupera el contexto reciente de la sesión.
+4) `BotCore` compone una "pregunta enriquecida" (mensaje + contexto) y llama a `SauAI` usando el `name` del usuario.
 5) `SauAI` usa el retriever (Pinecone) para traer fragmentos relevantes y luego el modelo de OpenAI genera la respuesta.
 6) La API devuelve una respuesta JSON con el contenido y metadatos útiles (p. ej., `session_id`).
 
