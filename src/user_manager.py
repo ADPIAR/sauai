@@ -30,6 +30,29 @@ class UserManager:
     def __init__(self, db_manager: DatabaseManager):
         self.db_manager = db_manager
 
+    def get_user_by_name(self, name: str) -> Optional[UserInfo]:
+        """Obtiene un usuario de la tabla users por name."""
+        try:
+            with self.db_manager.get_connection() as (conn, cursor):
+                cursor.execute(
+                    "SELECT telegram_username, session_id, name, email, message_count, created_at FROM users WHERE name = %s;",
+                    (name,)
+                )
+                row = cursor.fetchone()
+                if row:
+                    return UserInfo(
+                        telegram_username=row[0],
+                        session_id=row[1],
+                        name=row[2],
+                        email=row[3],
+                        message_count=row[4] if row[4] is not None else 0,
+                        created_at=row[5]
+                    )
+                return None
+        except Exception as e:
+            print(f"Error al obtener usuario por name {name}: {e}")
+            return None
+
     def get_user(self, username: str) -> Optional[UserInfo]:
         """Obtiene un usuario de la tabla users por telegram_username."""
         try:
@@ -53,6 +76,19 @@ class UserManager:
         except Exception as e:
             print(f"Error al obtener usuario {username}: {e}")
             return None
+
+    def increment_message_count_by_name(self, name: str):
+        """Incrementa el contador de mensajes de un usuario por name."""
+        try:
+            with self.db_manager.get_connection() as (conn, cursor):
+                cursor.execute(
+                    "UPDATE users SET message_count = COALESCE(message_count, 0) + 1 WHERE name = %s;",
+                    (name,)
+                )
+                conn.commit()
+        except Exception as e:
+            print(f"Error al incrementar contador de mensajes para el usuario {name}: {e}")
+            raise
 
     def increment_message_count(self, username: str):
         """Incrementa el contador de mensajes de un usuario."""

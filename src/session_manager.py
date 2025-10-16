@@ -78,8 +78,8 @@ class SessionManager:
                     
                     # Actualizar users.session_id
                     cursor.execute(
-                        "UPDATE users SET session_id = %s WHERE telegram_username = %s;",
-                        (str(new_session_id), username_clean)
+                        "UPDATE users SET session_id = %s WHERE name = %s;",
+                        (str(new_session_id), user_info.name)
                     )
                     conn.commit()
                     

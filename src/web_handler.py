@@ -45,7 +45,7 @@ class WebHandler:
             
             Formato esperado:
             {
-                "username": "@usuario",
+                "name": "Julian",
                 "message": "Hola, ¿cómo estás?",
                 "metadata": {
                     "user_agent": "...",
@@ -70,15 +70,15 @@ class WebHandler:
                 data = request.get_json()
                 
                 # Validar datos de entrada
-                if not data or 'username' not in data or 'message' not in data:
+                if not data or 'name' not in data or 'message' not in data:
                     return jsonify({
                         "success": False,
-                        "error": "Se requieren 'username' y 'message'"
+                        "error": "Se requieren 'name' y 'message'"
                     }), 400
                 
                 # Crear entrada de mensaje genérica
                 message_input = MessageInput(
-                    username=data['username'],
+                    username=data['name'],  # Usar name como username en MessageInput
                     message=data['message'],
                     origin="web",
                     metadata={

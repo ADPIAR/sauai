@@ -80,19 +80,18 @@ class BotCore:
         try:
             logger.info(f"🔄 Procesando mensaje de {message_input.username} desde {message_input.origin}")
             
-            # 1. Obtener o crear sesión del usuario
+            # 1. Obtener o crear sesión del usuario (usando name)
             user_session = await self._safe_session_operation(message_input.username)
             
-            # 2. Incrementar contador de mensajes del usuario
-            await self._safe_increment_message_count(message_input.username)
+            # 2. Incrementar contador de mensajes del usuario (usando name)
+            await self._safe_increment_message_count_by_name(message_input.username)
             
             # 3. Guardar mensaje del usuario en historial
             await self._safe_add_message(user_session.session_id, message_input.message, is_user=True)
             
-            # 4. Procesar mensaje con SauAI (usando name del usuario)
-            user_info = await self._safe_get_user_info(message_input.username)
+            # 4. Procesar mensaje con SauAI (usando name directamente)
             response_content = await self._safe_process_with_sauai(
-                user_info.name if user_info and user_info.name else message_input.username, 
+                message_input.username,  # name del usuario
                 user_session.session_id, 
                 message_input.message
             )
@@ -106,8 +105,7 @@ class BotCore:
                 response_type="text",
                 metadata={
                     "session_id": str(user_session.session_id),
-                    "username": message_input.username,
-                    "user_name": user_info.name if user_info and user_info.name else message_input.username,
+                    "name": message_input.username,  # name del usuario
                     "origin": message_input.origin,
                     "timestamp": datetime.now().isoformat()
                 }
@@ -120,33 +118,33 @@ class BotCore:
                 response_type="error",
                 metadata={
                     "error": str(e),
-                    "username": message_input.username,
+                    "name": message_input.username,  # name del usuario
                     "origin": message_input.origin,
                     "timestamp": datetime.now().isoformat()
                 }
             )
     
-    async def _safe_session_operation(self, username: str):
+    async def _safe_session_operation(self, name: str):
         """Obtiene sesión de forma segura con reintentos."""
         for attempt in range(3):
             try:
                 loop = asyncio.get_event_loop()
                 
-                # Obtener usuario (debe existir en users)
+                # Obtener usuario por name (debe existir en users)
                 user_info = await loop.run_in_executor(
                     self.executor,
-                    self.user_manager.get_user,
-                    username
+                    self.user_manager.get_user_by_name,
+                    name
                 )
                 
                 if not user_info:
-                    raise Exception(f"Usuario {username.lstrip('@')} no encontrado en la tabla users")
+                    raise Exception(f"Usuario con name '{name}' no encontrado en la tabla users")
                 
                 # Obtener o crear sesión
                 return await loop.run_in_executor(
                     self.executor,
                     self.session_manager.get_or_create_session,
-                    username,
+                    name,
                     user_info
                 )
                 
@@ -192,6 +190,24 @@ class BotCore:
                 return
             except Exception as e:
                 logger.warning(f"⚠️ Intento {attempt + 1} fallido para incrementar contador: {e}")
+                if attempt == max_retries - 1:
+                    raise
+                await asyncio.sleep(1)  # Esperar antes del siguiente intento
+
+    async def _safe_increment_message_count_by_name(self, name: str):
+        """Operación segura para incrementar contador de mensajes por name con reintentos"""
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                loop = asyncio.get_event_loop()
+                await loop.run_in_executor(
+                    self.executor,
+                    self.user_manager.increment_message_count_by_name,
+                    name
+                )
+                return
+            except Exception as e:
+                logger.warning(f"⚠️ Intento {attempt + 1} fallido para incrementar contador por name: {e}")
                 if attempt == max_retries - 1:
                     raise
                 await asyncio.sleep(1)  # Esperar antes del siguiente intento
