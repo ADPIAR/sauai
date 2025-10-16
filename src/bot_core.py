@@ -89,9 +89,10 @@ class BotCore:
             # 3. Guardar mensaje del usuario en historial
             await self._safe_add_message(user_session.session_id, message_input.message, is_user=True)
             
-            # 4. Procesar mensaje con SauAI
+            # 4. Procesar mensaje con SauAI (usando name del usuario)
+            user_info = await self._safe_get_user_info(message_input.username)
             response_content = await self._safe_process_with_sauai(
-                message_input.username, 
+                user_info.name if user_info and user_info.name else message_input.username, 
                 user_session.session_id, 
                 message_input.message
             )
@@ -106,6 +107,7 @@ class BotCore:
                 metadata={
                     "session_id": str(user_session.session_id),
                     "username": message_input.username,
+                    "user_name": user_info.name if user_info and user_info.name else message_input.username,
                     "origin": message_input.origin,
                     "timestamp": datetime.now().isoformat()
                 }
@@ -190,6 +192,23 @@ class BotCore:
                 return
             except Exception as e:
                 logger.warning(f"⚠️ Intento {attempt + 1} fallido para incrementar contador: {e}")
+                if attempt == max_retries - 1:
+                    raise
+                await asyncio.sleep(1)  # Esperar antes del siguiente intento
+
+    async def _safe_get_user_info(self, username: str):
+        """Obtiene información del usuario de forma segura con reintentos"""
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                loop = asyncio.get_event_loop()
+                return await loop.run_in_executor(
+                    self.executor,
+                    self.user_manager.get_user,
+                    username
+                )
+            except Exception as e:
+                logger.warning(f"⚠️ Intento {attempt + 1} fallido para obtener usuario: {e}")
                 if attempt == max_retries - 1:
                     raise
                 await asyncio.sleep(1)  # Esperar antes del siguiente intento
