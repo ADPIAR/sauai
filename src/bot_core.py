@@ -83,20 +83,23 @@ class BotCore:
             # 1. Obtener o crear sesión del usuario
             user_session = await self._safe_session_operation(message_input.username)
             
-            # 2. Guardar mensaje del usuario en historial
+            # 2. Incrementar contador de mensajes del usuario
+            await self._safe_increment_message_count(message_input.username)
+            
+            # 3. Guardar mensaje del usuario en historial
             await self._safe_add_message(user_session.session_id, message_input.message, is_user=True)
             
-            # 3. Procesar mensaje con SauAI
+            # 4. Procesar mensaje con SauAI
             response_content = await self._safe_process_with_sauai(
                 message_input.username, 
                 user_session.session_id, 
                 message_input.message
             )
             
-            # 4. Guardar respuesta en historial
+            # 5. Guardar respuesta en historial
             await self._safe_add_message(user_session.session_id, response_content, is_user=False)
             
-            # 5. Retornar respuesta genérica
+            # 6. Retornar respuesta genérica
             return MessageResponse(
                 content=response_content,
                 response_type="text",
@@ -169,6 +172,24 @@ class BotCore:
                 return
             except Exception as e:
                 logger.warning(f"⚠️ Intento {attempt + 1} fallido para agregar mensaje: {e}")
+                if attempt == max_retries - 1:
+                    raise
+                await asyncio.sleep(1)  # Esperar antes del siguiente intento
+
+    async def _safe_increment_message_count(self, username: str):
+        """Operación segura para incrementar contador de mensajes con reintentos"""
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                loop = asyncio.get_event_loop()
+                await loop.run_in_executor(
+                    self.executor,
+                    self.user_manager.increment_message_count,
+                    username
+                )
+                return
+            except Exception as e:
+                logger.warning(f"⚠️ Intento {attempt + 1} fallido para incrementar contador: {e}")
                 if attempt == max_retries - 1:
                     raise
                 await asyncio.sleep(1)  # Esperar antes del siguiente intento

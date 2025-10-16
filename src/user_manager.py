@@ -15,6 +15,7 @@ class UserInfo:
     session_id: Optional[str] = None  # Nueva columna
     name: str = ""
     email: str = ""
+    message_count: int = 0  # Contador de mensajes migrado desde users_telegram
     created_at: datetime.datetime = field(default_factory=datetime.datetime.now)
 
     def to_dict(self):
@@ -35,7 +36,7 @@ class UserManager:
             with self.db_manager.get_connection() as (conn, cursor):
                 username_clean = username.lstrip('@')  # Remover @ si existe
                 cursor.execute(
-                    "SELECT telegram_username, session_id, name, email, created_at FROM users WHERE telegram_username = %s;",
+                    "SELECT telegram_username, session_id, name, email, message_count, created_at FROM users WHERE telegram_username = %s;",
                     (username_clean,)
                 )
                 row = cursor.fetchone()
@@ -45,9 +46,24 @@ class UserManager:
                         session_id=row[1],
                         name=row[2],
                         email=row[3],
-                        created_at=row[4]
+                        message_count=row[4] if row[4] is not None else 0,
+                        created_at=row[5]
                     )
                 return None
         except Exception as e:
             print(f"Error al obtener usuario {username}: {e}")
             return None
+
+    def increment_message_count(self, username: str):
+        """Incrementa el contador de mensajes de un usuario."""
+        try:
+            with self.db_manager.get_connection() as (conn, cursor):
+                username_clean = username.lstrip('@')
+                cursor.execute(
+                    "UPDATE users SET message_count = COALESCE(message_count, 0) + 1 WHERE telegram_username = %s;",
+                    (username_clean,)
+                )
+                conn.commit()
+        except Exception as e:
+            print(f"Error al incrementar contador de mensajes para el usuario {username}: {e}")
+            raise
