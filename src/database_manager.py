@@ -38,7 +38,7 @@ class DatabaseManager:
                 # Timeouts más largos para Railway
                 'connect_timeout': 60,
                 'application_name': 'sau-bot',
-                # Keepalive más agresivo para Railway
+                # Keepalive para Railway
                 'keepalives': 1,
                 'keepalives_idle': 600,  # 10 minutos
                 'keepalives_interval': 30,
@@ -48,14 +48,8 @@ class DatabaseManager:
                 'sslcert': None,
                 'sslkey': None,
                 'sslrootcert': None,
-                # Configuraciones adicionales para estabilidad
-                'tcp_keepalives_idle': 600,
-                'tcp_keepalives_interval': 30,
-                'tcp_keepalives_count': 5,
                 # Timeout de statement más largo
-                'statement_timeout': 30000,  # 30 segundos
-                # Configuración de conexión persistente
-                'options': '-c default_transaction_isolation=read_committed'
+                'statement_timeout': 30000  # 30 segundos
             }
             
             self.connection_pool = psycopg2.pool.ThreadedConnectionPool(
