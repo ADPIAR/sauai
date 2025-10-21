@@ -47,9 +47,7 @@ class DatabaseManager:
                 'sslmode': 'require',
                 'sslcert': None,
                 'sslkey': None,
-                'sslrootcert': None,
-                # Timeout de statement más largo
-                'statement_timeout': 30000  # 30 segundos
+                'sslrootcert': None
             }
             
             self.connection_pool = psycopg2.pool.ThreadedConnectionPool(
