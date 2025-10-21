@@ -27,30 +27,47 @@ class DatabaseManager:
         """Configura el pool de conexiones con reconexión automática"""
         try:
             url = urlparse(self.database_url)
+            
+            # Configuraciones optimizadas para Railway
+            connection_params = {
+                'database': url.path[1:],
+                'user': url.username,
+                'password': url.password,
+                'host': url.hostname,
+                'port': url.port,
+                # Timeouts más largos para Railway
+                'connect_timeout': 60,
+                'application_name': 'sau-bot',
+                # Keepalive más agresivo para Railway
+                'keepalives': 1,
+                'keepalives_idle': 600,  # 10 minutos
+                'keepalives_interval': 30,
+                'keepalives_count': 5,
+                # SSL optimizado para Railway
+                'sslmode': 'require',
+                'sslcert': None,
+                'sslkey': None,
+                'sslrootcert': None,
+                # Configuraciones adicionales para estabilidad
+                'tcp_keepalives_idle': 600,
+                'tcp_keepalives_interval': 30,
+                'tcp_keepalives_count': 5,
+                # Timeout de statement más largo
+                'statement_timeout': 30000,  # 30 segundos
+                # Configuración de conexión persistente
+                'options': '-c default_transaction_isolation=read_committed'
+            }
+            
             self.connection_pool = psycopg2.pool.ThreadedConnectionPool(
                 minconn=self.min_connections,
                 maxconn=self.max_connections,
-                database=url.path[1:],
-                user=url.username,
-                password=url.password,
-                host=url.hostname,
-                port=url.port,
-                # Configuraciones para mejorar la estabilidad
-                connect_timeout=30,
-                application_name='sau-bot',
-                keepalives=1,
-                keepalives_idle=300,
-                keepalives_interval=30,
-                keepalives_count=3,
-                # Configuraciones SSL para Railway
-                sslmode='require',
-                sslcert=None,
-                sslkey=None,
-                sslrootcert=None
+                **connection_params
             )
             logger.info("✅ Pool de conexiones PostgreSQL configurado exitosamente")
+            logger.info(f"🔧 Configuración: host={url.hostname}, port={url.port}, db={url.path[1:]}")
         except Exception as e:
             logger.error(f"❌ Error al configurar pool de conexiones: {e}")
+            logger.error(f"🔧 DATABASE_URL: {self.database_url[:50]}...")
             raise
 
     @contextmanager
@@ -58,67 +75,104 @@ class DatabaseManager:
         """Context manager para obtener una conexión del pool con manejo automático de errores"""
         conn = None
         cursor = None
-        try:
-            # Verificar si el pool está disponible
-            if not self.connection_pool:
-                logger.warning("⚠️ Pool de conexiones no disponible, intentando reconectar...")
-                self._reconnect()
-            
-            conn = self.connection_pool.getconn()
-            if conn is None:
-                raise Exception("No se pudo obtener conexión del pool")
-            cursor = conn.cursor()
-            yield conn, cursor
-        except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
-            logger.warning(f"⚠️ Error de conexión detectado: {e}")
-            if conn:
-                try:
-                    conn.rollback()
-                except:
-                    pass
-            # Intentar reconectar solo si el error es de conexión
-            if "connection" in str(e).lower() or "pool" in str(e).lower():
-                self._reconnect()
-            raise
-        except Exception as e:
-            logger.error(f"❌ Error en operación de base de datos: {e}")
-            if conn:
-                try:
-                    conn.rollback()
-                except:
-                    pass
-            raise
-        finally:
-            if cursor:
-                try:
-                    cursor.close()
-                except Exception as e:
-                    logger.debug(f"Error cerrando cursor: {e}")
-            if conn and self.connection_pool:
-                try:
-                    self.connection_pool.putconn(conn)
-                except Exception as e:
-                    logger.error(f"❌ Error al devolver conexión al pool: {e}")
-                    # No re-raise aquí para evitar el error "trying to put unkeyed connection"
+        max_retries = 3
+        retry_count = 0
+        
+        while retry_count < max_retries:
+            try:
+                # Verificar si el pool está disponible
+                if not self.connection_pool:
+                    logger.warning("⚠️ Pool de conexiones no disponible, intentando reconectar...")
+                    self._reconnect()
+                
+                logger.debug(f"🔄 Intento {retry_count + 1} de obtener conexión del pool")
+                conn = self.connection_pool.getconn()
+                if conn is None:
+                    raise Exception("No se pudo obtener conexión del pool")
+                
+                # Verificar que la conexión esté activa
+                cursor = conn.cursor()
+                cursor.execute("SELECT 1")
+                cursor.fetchone()
+                
+                logger.debug("✅ Conexión obtenida y verificada exitosamente")
+                yield conn, cursor
+                return  # Éxito, salir del bucle
+                
+            except (psycopg2.OperationalError, psycopg2.InterfaceError, psycopg2.DatabaseError) as e:
+                retry_count += 1
+                logger.warning(f"⚠️ Error de conexión detectado (intento {retry_count}/{max_retries}): {e}")
+                
+                if conn:
+                    try:
+                        conn.rollback()
+                    except:
+                        pass
+                
+                # Intentar reconectar solo si el error es de conexión
+                if any(keyword in str(e).lower() for keyword in ["connection", "pool", "timeout", "server"]):
+                    if retry_count < max_retries:
+                        logger.info(f"🔄 Intentando reconectar... (intento {retry_count})")
+                        self._reconnect()
+                        time.sleep(1)  # Esperar antes del siguiente intento
+                        continue
+                
+                if retry_count >= max_retries:
+                    logger.error(f"❌ Falló después de {max_retries} intentos: {e}")
+                    raise
+                    
+            except Exception as e:
+                logger.error(f"❌ Error inesperado en operación de base de datos: {e}")
+                if conn:
+                    try:
+                        conn.rollback()
+                    except:
+                        pass
+                raise
+            finally:
+                if cursor:
+                    try:
+                        cursor.close()
+                    except Exception as e:
+                        logger.debug(f"Error cerrando cursor: {e}")
+                if conn and self.connection_pool:
+                    try:
+                        self.connection_pool.putconn(conn)
+                        logger.debug("✅ Conexión devuelta al pool")
+                    except Exception as e:
+                        logger.error(f"❌ Error al devolver conexión al pool: {e}")
+                        # No re-raise aquí para evitar el error "trying to put unkeyed connection"
 
     def _reconnect(self):
         """Reconecta el pool de conexiones en caso de error"""
         try:
             logger.info("🔄 Intentando reconectar a la base de datos...")
+            
             # Cerrar pool existente de forma segura
             if self.connection_pool:
                 try:
+                    logger.debug("🔌 Cerrando pool de conexiones existente...")
                     self.connection_pool.closeall()
                 except Exception as e:
                     logger.debug(f"Error cerrando pool existente: {e}")
-                self.connection_pool = None
+                finally:
+                    self.connection_pool = None
             
-            # Esperar antes de reconectar
-            time.sleep(2)
+            # Esperar antes de reconectar (backoff exponencial)
+            wait_time = min(2, 10)  # 2 segundos por defecto
+            logger.info(f"⏳ Esperando {wait_time} segundos antes de reconectar...")
+            time.sleep(wait_time)
             
             # Crear nuevo pool
+            logger.info("🔧 Creando nuevo pool de conexiones...")
             self._setup_connection_pool()
-            logger.info("✅ Reconexión exitosa")
+            
+            # Verificar que el nuevo pool funciona
+            with self.get_connection() as (conn, cursor):
+                cursor.execute("SELECT 1")
+                cursor.fetchone()
+            
+            logger.info("✅ Reconexión exitosa y verificada")
         except Exception as e:
             logger.error(f"❌ Error durante reconexión: {e}")
             self.connection_pool = None
@@ -138,9 +192,26 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"❌ Error al cerrar pool de conexiones: {e}")
 
+    def health_check(self):
+        """Verifica la salud de la conexión a la base de datos"""
+        try:
+            with self.get_connection() as (conn, cursor):
+                cursor.execute("SELECT 1")
+                result = cursor.fetchone()
+                if result and result[0] == 1:
+                    logger.info("✅ Health check de base de datos exitoso")
+                    return True
+                else:
+                    logger.warning("⚠️ Health check de base de datos falló")
+                    return False
+        except Exception as e:
+            logger.error(f"❌ Health check de base de datos falló: {e}")
+            return False
+
     def create_tables(self):
         """Crea las tablas necesarias usando el pool de conexiones"""
         try:
+            logger.info("🔧 Iniciando creación/verificación de tablas...")
             with self.get_connection() as (conn, cursor):
                 # Tabla sessions (ya sin FK a users_telegram)
                 cursor.execute("""
